@@ -10,87 +10,58 @@ ARG1 = $fd
 
 ; Macros
 
-	; Call println
-	.macro println,s
-	ldx #<\s
-	ldy #>\s
-	jsr println
-	.endmacro
-
-; Basic booter
-
-	.org $0801
-basic_start:
-	.word basic_end, 10
-	.byte $9e, " 2064", 0 ; SYS 2064 ($0810)
-basic_end:
-	.word 0
+.macro println s
+	ldx #<s
+	ldy #>s
+	jsr _println
+.endmacro
 
 ; Program
 
-	.org $0810
 main:
-	ldx #<string_title
-	ldy #>string_title
-	jsr println
-
-	ldx #<intcode_program
-	ldy #>intcode_program
-	jsr interpret
-	rts
+	println string_title
+	jmp interpret
 
 ; Interpreter registers
 
 INTCODE_MEMORY_MAX = $7fff
 
+reg_start:
 reg_pc:
-	; program counter (index, not address)
+	; Program counter (16 bits):
+	; This register contains the offset (in bytes) into the program where
+	; the current instruction is.
 	.word $5858
 reg_op:
-	; opcode
+	; Opcode (32 bits)
+	; During decoding, this register contains the Intcode opcode.
 	.byte $58, $58, $58, $58
 reg_a:
-	; argument A
+	; Argument A (32 bits)
 	.byte $58, $58, $58, $58
 reg_b:
-	; argument B
+	; Argument B (32 bits)
 	.byte $58, $58, $58, $58
 reg_c:
-	; argument C
+	; Argument C (32 bits)
 	.byte $58, $58, $58, $58
+reg_end:
 
 ; interpret
-;   Interpret the Intcode program in $2000-$7ffff
+;   Interpret the Intcode program.
 ;
 ; Clobber:
 ;   A,X,Y,ZP
 interpret:
-	; Initialize.
+	; Zero all the interpreter registers.
 	lda #0
-	sta reg_pc
-	sta reg_pc+1
-	sta reg_op
-	sta reg_op+1
-	sta reg_op+2
-	sta reg_op+3
-	sta reg_a
-	sta reg_a+1
-	sta reg_a+2
-	sta reg_a+3
-	sta reg_b
-	sta reg_b+1
-	sta reg_b+2
-	sta reg_b+3
-	sta reg_c
-	sta reg_c+1
-	sta reg_c+2
-	sta reg_c+3
+	ldy #<(reg_end - reg_start)
+@loop:
+	dey
+	sta reg_start,y
+	bne @loop
 
 interpret_loop:
-	nop
-	nop
-	nop
-	nop
 	; Calculate the address of the opcode.
 	; Store it in the argument of the LDA instruction that loads the opcode.
 	clc
@@ -101,7 +72,7 @@ interpret_loop:
 	adc #>intcode_program
 	sta interpret_lda+2
 
-	; Load the 32-bit opcode into reg_op.
+	; Copy the opcode into reg_op (32 bits)
 	ldy #3
 interpret_lda:
 	lda $5858,Y
@@ -125,10 +96,10 @@ interpret_end:
 
 interpret_add:
 	println string_add
-	; Increment PC by 4.
+	; Increment PC by 16 bytes.
 	clc
 	lda reg_pc
-	adc #4
+	adc #16
 	sta reg_pc
 	lda reg_pc+1
 	adc #0
@@ -137,14 +108,12 @@ interpret_add:
 
 interpret_mul:
 	println string_mul
+	; TODO: multiply
 	jmp interpret_end
 
 interpret_hlt:
 	println string_hlt
 	jmp interpret_end
-
-;interpret_pc:
-;	.word $5858
 
 ; print
 ;   Print a string of characters, stopping at 0.
@@ -158,18 +127,19 @@ print:
 	stx ARG0
 	sty ARG0+1
 	ldy #0
-print_loop:
+@loop:
 	lda (ARG0),y
-	beq print_end
+	beq @end
 	jsr CHROUT
 	iny
-	bne print_loop
-print_end:
+	bne @loop
+@end:
 	rts
 
-; println - print a string of characters, stop at 0, followed by a CR
-; See print.
-println:
+; println
+;   Print a string of characters, stopping at 0, followed by a CR.
+;   See print.
+_println:
 	jsr print
 	lda #$0d
 	jsr CHROUT
@@ -178,29 +148,25 @@ println:
 ; Strings
 
 string_title:
-	.asciiz "INTCODE INTERPRETER - BY T. KOSTER"
+	.asciiz "intcode interpreter - by t. koster"
 
 string_add:
-	.asciiz "ADD"
+	.asciiz "add"
 
 string_mul:
-	.asciiz "MUL"
+	.asciiz "mul"
 
 string_hlt:
-	.asciiz "HLT"
+	.asciiz "hlt"
 
 string_invalid_opcode:
-	.asciiz "INVALID OPCODE"
-
-string_done:
-	.asciiz "DONE"
+	.asciiz "invalid opcode"
 
 ; Data
 
-	.org $0a00
 intcode_program:
-	.defl 1, 0, 0, 3 ; add 0 0 3
-	.defl 99	 ; hlt
+	.dword 1, 0, 0, 3 ; add 0 0 3
+	.dword 99         ; hlt
 
 ;gravity_assist_program:
 ;	.word 1,0,0,3,1,1,2,3,1,3,4,3,1,5,0,3,2,10,1,19,1,6,19,23,2,23,6,27,1,5,27,31,1,31,9,35,2,10,35,39,1,5,39,43,2,43,10,47,1,47,6,51,2,51,6,55,2,55,13,59,2,6,59,63,1,63,5,67,1,6,67,71,2,71,9,75,1,6,75,79,2,13,79,83,1,9,83,87,1,87,13,91,2,91,10,95,1,6,95,99,1,99,13,103,1,13,103,107,2,107,10,111,1,9,111,115,1,115,10,119,1,5,119,123,1,6,123,127,1,10,127,131,1,2,131,135,1,135,10,0,99,2,14,0,0
