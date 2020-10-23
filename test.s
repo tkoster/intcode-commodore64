@@ -54,49 +54,171 @@ reg_end:
 ;   A,X,Y,ZP
 interpret:
 	; Zero all the interpreter registers.
+
 	lda #0
 	ldy #<(reg_end - reg_start)
 @loop:
 	dey
-	sta reg_start,y
+	sta reg_start,Y
 	bne @loop
 
 interpret_loop:
-	; Calculate the address of the opcode.
-	; Store it in the argument of the LDA instruction that loads the opcode.
+	; Using the offset in the PC register, calculate the memory address of
+	; the next Intcode instruction.
+
+	; Store it in the argument of the LDA instruction below that loads the
+	; instruction.
+
 	clc
 	lda reg_pc
 	adc #<intcode_program
-	sta interpret_lda+1
+	sta @lda_op+1
 	lda reg_pc+1
 	adc #>intcode_program
-	sta interpret_lda+2
+	sta @lda_op+2
 
-	; Copy the opcode into reg_op (32 bits)
-	ldy #3
-interpret_lda:
+	; Copy the Intcode instruction into the instruction registers.
+	; These are the opcode and 3 arguments, 32 bits each (16 bytes total).
+
+	ldy #15
+@loop:
+@lda_op:
 	lda $5858,Y
 	sta reg_op,Y
 	dey
-	bpl interpret_lda
+	bpl @loop
 
-interpret_decode:
-	; Decode the opcode.
+	; Decode the opcode; jump to its code.
+
 	lda reg_op
 	cmp #1
 	beq interpret_add
 	cmp #2
-	beq interpret_mul
+	bne @cmp_hlt
+	jmp interpret_mul
+@cmp_hlt:
 	cmp #99
-	beq interpret_hlt
+	bne @invalid_opcode
+	jmp interpret_hlt
 
+@invalid_opcode:
 	println string_invalid_opcode
+
 interpret_end:
 	rts
 
 interpret_add:
 	println string_add
-	; Increment PC by 16 bytes.
+
+	; The A register contains the Intcode address of the first operand.
+	;
+	; Calculate the memory address of the value of argument A.
+	;
+	; Store it in the argument of the LDA instruction below that loads the
+	; value of argument A.
+
+	asl reg_a
+	rol reg_a+1
+	asl reg_a
+	rol reg_a+1
+	clc
+	lda reg_a
+	adc #<intcode_program
+	sta @lda_a+1
+	lda reg_a+1
+	adc #>intcode_program
+	sta @lda_a+2
+
+	; Copy the value of argument A into the A register (32 bits).
+
+	ldy #3
+@loop_a:
+@lda_a:
+	lda $5858,Y
+	sta reg_a,Y
+	dey
+	bpl @loop_a
+
+	; The B register contains the Intcode address of the second operand.
+	;
+	; Calculate the memory address of the value of argument B.
+	;
+	; Store it in the argument of the LDA instruction below that loads the
+	; value of argument B.
+
+	asl reg_b
+	rol reg_b+1
+	asl reg_b
+	rol reg_b+1
+	clc
+	lda reg_b
+	adc #<intcode_program
+	sta @lda_b+1
+	lda reg_b+1
+	adc #>intcode_program
+	sta @lda_b+2
+
+	; Copy the value of argument B into the B register (32 bits).
+
+	ldy #3
+@loop_b:
+@lda_b:
+	lda $5858,Y
+	sta reg_b,Y
+	dey
+	bpl @loop_b
+
+	; Add the values in the A and B registers.
+	; Store the result in the B register (32 bits).
+
+	clc
+	lda reg_a
+	adc reg_b
+	sta reg_b
+	lda reg_a+1
+	adc reg_b+1
+	sta reg_b+1
+	lda reg_a+2
+	adc reg_b+2
+	sta reg_b+2
+	lda reg_a+3
+	adc reg_b+3
+	sta reg_b+3
+
+	; The C register contains the Intcode address to write the result to.
+	;
+	; As the value of the register is an Intcode address, the high 16 bits
+	; are ignored.
+	;
+	; Calculate the memory address of the result.
+	;
+	; Store it in the argument of the STA instruction below that saves the
+	; result.
+
+	asl reg_c
+	rol reg_c+1
+	asl reg_c
+	rol reg_c+1
+	clc
+	lda reg_c
+	adc #<intcode_program
+	sta @sta_result+1
+	lda reg_c+1
+	adc #>intcode_program
+	sta @sta_result+2
+
+	; Copy the result from register B into Intcode memory (32 bits).
+
+	ldy #3
+@loop_r:
+	lda reg_b,Y
+@sta_result:
+	sta $5858,Y
+	dey
+	bpl @loop_r
+
+	; Increment PC register by 16 bytes.
+
 	clc
 	lda reg_pc
 	adc #16
@@ -104,6 +226,9 @@ interpret_add:
 	lda reg_pc+1
 	adc #0
 	sta reg_pc+1
+
+	; Process next instruction.
+
 	jmp interpret_loop
 
 interpret_mul:
@@ -128,7 +253,7 @@ print:
 	sty ARG0+1
 	ldy #0
 @loop:
-	lda (ARG0),y
+	lda (ARG0),Y
 	beq @end
 	jsr CHROUT
 	iny
