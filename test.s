@@ -183,6 +183,13 @@ interpret_mul:
 
 interpret_hlt:
 	println string_hlt
+
+	; Print the number in Intcode memory at address 0.
+
+	jsr output_0
+
+	; Done.
+
 	jmp interpret_end
 
 ; Subroutines for interpreter operations like load and store
@@ -372,7 +379,7 @@ mul_a_b:
 
 	; Rotate the product right.
 @rotate:
-	ror a
+	ror A
 	sta reg_r+7
 	ror reg_r+6
 	ror reg_r+5
@@ -398,6 +405,34 @@ mul_a_b:
 	lda reg_r+3
 	sta reg_b+3
 	rts
+
+output_0:
+	ldy #3
+@loop:
+	; Print the high nibble.
+
+	lda intcode_program,Y
+	lsr A
+	lsr A
+	lsr A
+	lsr A
+	tax
+	lda @digits,X
+	jsr CHROUT
+
+	; Print the low nibble.
+
+	lda intcode_program,Y
+	and #$0f
+	tax
+	lda @digits,X
+	jsr CHROUT
+
+	dey
+	bpl @loop
+	rts
+@digits:
+	.asciiz "0123456789abcdef"
 
 ; print
 ;   Print a string of characters, stopping at 0.
@@ -449,10 +484,4 @@ string_invalid_opcode:
 ; Data
 
 intcode_program:
-	.dword 1,9,10,3,2,3,11,0,99,30,40,50
-
-;gravity_assist_program:
-;	.dword 1,0,0,3,1,1,2,3,1,3,4,3,1,5,0,3,2,10,1,19,1,6,19,23,2,23,6,27,1,5,27,31,1,31,9,35,2,10,35,39,1,5,39,43,2,43,10,47,1,47,6,51,2,51,6,55,2,55,13,59,2,6,59,63,1,63,5,67,1,6,67,71,2,71,9,75,1,6,75,79,2,13,79,83,1,9,83,87,1,87,13,91,2,91,10,95,1,6,95,99,1,99,13,103,1,13,103,107,2,107,10,111,1,9,111,115,1,115,10,119,1,5,119,123,1,6,123,127,1,10,127,131,1,2,131,135,1,135,10,0,99,2,14,0,0
-
-;quine_program:
-;	.dword 109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99
+	.dword 1,12,2,3,1,1,2,3,1,3,4,3,1,5,0,3,2,10,1,19,1,6,19,23,2,23,6,27,1,5,27,31,1,31,9,35,2,10,35,39,1,5,39,43,2,43,10,47,1,47,6,51,2,51,6,55,2,55,13,59,2,6,59,63,1,63,5,67,1,6,67,71,2,71,9,75,1,6,75,79,2,13,79,83,1,9,83,87,1,87,13,91,2,91,10,95,1,6,95,99,1,99,13,103,1,13,103,107,2,107,10,111,1,9,111,115,1,115,10,119,1,5,119,123,1,6,123,127,1,10,127,131,1,2,131,135,1,135,10,0,99,2,14,0,0
