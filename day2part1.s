@@ -246,7 +246,7 @@ deref_b:
 	adc #>intcode_program
 	sta @lda_b+2
 
-	; Copy the value of argument A into the B register (32 bits).
+	; Copy the value of argument B into the B register (32 bits).
 
 	ldy #3
 @loop:
