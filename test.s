@@ -5,6 +5,7 @@
 CHROUT = $ffd2
 
 ; ZP addresses (1 word each)
+
 ARG0 = $fb
 ARG1 = $fd
 
@@ -20,7 +21,7 @@ ARG1 = $fd
 
 main:
 	println string_title
-	jmp interpret
+	jmp interpret ; ends with rts
 
 ; Interpreter registers
 
@@ -45,6 +46,9 @@ reg_b:
 reg_c:
 	; Argument C (32 bits)
 	.byte $58, $58, $58, $58
+reg_r:
+	; Math result register (64 bits)
+	.byte $58, $58, $58, $58, $58, $58, $58, $58
 reg_end:
 
 ; interpret
@@ -112,6 +116,80 @@ interpret_add:
 
 	; The A register contains the Intcode address of the first operand.
 	;
+	; Replace it with the value at that address.
+
+	jsr deref_a
+
+	; The B register contains the Intcode address of the second operand.
+	;
+	; Replace it with the value at that address.
+
+	jsr deref_b
+
+	; Add the values in the A and B registers.
+	; Store the result in the B register (32 bits).
+
+	jsr add_a_b
+
+	; The C register contains the Intcode address to write the result to.
+	;
+	; Copy the result value in register B to the Intcode memory at this
+	; address.
+
+	jsr store_b_in_c
+
+	; Increment PC register by 16 bytes.
+
+	jsr incpc16
+
+	; Process next instruction.
+
+	jmp interpret_loop
+
+interpret_mul:
+	println string_mul
+
+	; The A register contains the Intcode address of the first operand.
+	;
+	; Replace it with the value at that address.
+
+	jsr deref_a
+
+	; The B register contains the Intcode address of the second operand.
+	;
+	; Replace is with the value at that addess.
+
+	jsr deref_b
+
+	; Multiply the values in the A and B registers.
+	; Store the result in the B register (32 bits).
+
+	jsr mul_a_b
+
+	; The C register contains the Intcode address to write the result to.
+	;
+	; Copy the result value in register B to the Intcode memory at this
+	; address.
+
+	jsr store_b_in_c
+
+	; Increment PC register by 16 bytes.
+
+	jsr incpc16
+
+	; Process next instruction.
+
+	jmp interpret_loop
+
+interpret_hlt:
+	println string_hlt
+	jmp interpret_end
+
+; Subroutines for interpreter operations like load and store
+
+; deref_a - Replace an Intcode address in the A register with the value at
+; that location in Intcode memory.
+deref_a:
 	; Calculate the memory address of the value of argument A.
 	;
 	; Store it in the argument of the LDA instruction below that loads the
@@ -132,15 +210,18 @@ interpret_add:
 	; Copy the value of argument A into the A register (32 bits).
 
 	ldy #3
-@loop_a:
+@loop:
 @lda_a:
 	lda $5858,Y
 	sta reg_a,Y
 	dey
-	bpl @loop_a
+	bpl @loop
 
-	; The B register contains the Intcode address of the second operand.
-	;
+	rts
+
+; deref_b - Replace an Intcode address in the B register with the value at
+; that location in Intcode memory.
+deref_b:
 	; Calculate the memory address of the value of argument B.
 	;
 	; Store it in the argument of the LDA instruction below that loads the
@@ -158,38 +239,24 @@ interpret_add:
 	adc #>intcode_program
 	sta @lda_b+2
 
-	; Copy the value of argument B into the B register (32 bits).
+	; Copy the value of argument A into the B register (32 bits).
 
 	ldy #3
-@loop_b:
+@loop:
 @lda_b:
 	lda $5858,Y
 	sta reg_b,Y
 	dey
-	bpl @loop_b
+	bpl @loop
 
-	; Add the values in the A and B registers.
-	; Store the result in the B register (32 bits).
+	rts
 
-	clc
-	lda reg_a
-	adc reg_b
-	sta reg_b
-	lda reg_a+1
-	adc reg_b+1
-	sta reg_b+1
-	lda reg_a+2
-	adc reg_b+2
-	sta reg_b+2
-	lda reg_a+3
-	adc reg_b+3
-	sta reg_b+3
-
-	; The C register contains the Intcode address to write the result to.
-	;
-	; As the value of the register is an Intcode address, the high 16 bits
-	; are ignored.
-	;
+; store_b_in_c - Copy the value in register B to the Intcode memory at the
+; Intcode address in register C.
+;
+; As the value of the register is an Intcode address, the high 16 bits of the
+; value are ignored.
+store_b_in_c:
 	; Calculate the memory address of the result.
 	;
 	; Store it in the argument of the STA instruction below that saves the
@@ -217,8 +284,16 @@ interpret_add:
 	dey
 	bpl @loop_r
 
-	; Increment PC register by 16 bytes.
+	rts
 
+; incpc16
+;   Increment the interpreter PC register by 16 bytes (4 cells).
+;
+; Arguments:
+;   X - how much to increment the PC (number of bytes)
+; Clobber:
+;   A
+incpc16:
 	clc
 	lda reg_pc
 	adc #16
@@ -226,19 +301,103 @@ interpret_add:
 	lda reg_pc+1
 	adc #0
 	sta reg_pc+1
+	rts
 
-	; Process next instruction.
+; add_a_b
+;   Add the values in the A and B registers, storing the sum in register B.
+;
+; Clobber: A
+add_a_b:
+	clc
+	lda reg_a
+	adc reg_b
+	sta reg_b
+	lda reg_a+1
+	adc reg_b+1
+	sta reg_b+1
+	lda reg_a+2
+	adc reg_b+2
+	sta reg_b+2
+	lda reg_a+3
+	adc reg_b+3
+	sta reg_b+3
+	rts
 
-	jmp interpret_loop
+; mul_a_b
+;   Multiply the values in the A and B registers, storing the product in register B.
+;
+;   Register A is the multiplier and register B is the multiplicand.
+;
+;   After this subroutine returns, the value in the A register is undefined.
+;
+; Clobber:
+;   A,X
+mul_a_b:
+	; Clear high product bits.
 
-interpret_mul:
-	println string_mul
-	; TODO: multiply
-	jmp interpret_end
+	lda #0
+	sta reg_r+4
+	sta reg_r+5
+	sta reg_r+6
+	sta reg_r+7
 
-interpret_hlt:
-	println string_hlt
-	jmp interpret_end
+	ldx #32
+
+	; Shift the multiplier right.
+
+@shift:
+	lsr reg_a+3
+	ror reg_a+2
+	ror reg_a+1
+	ror reg_a
+
+	; Skip additions if LSB was zero.
+
+	bcc @rotate
+
+	; Add multiplicand to product.
+
+	clc
+	lda reg_r+4
+	adc reg_b
+	sta reg_r+4
+	lda reg_r+5
+	adc reg_b+1
+	sta reg_r+5
+	lda reg_r+6
+	adc reg_b+2
+	sta reg_r+6
+	lda reg_r+7
+	adc reg_b+3
+
+	; Rotate the product right.
+@rotate:
+	ror a
+	sta reg_r+7
+	ror reg_r+6
+	ror reg_r+5
+	ror reg_r+4
+	ror reg_r+3
+	ror reg_r+2
+	ror reg_r+1
+	ror reg_r
+
+	; Next bit.
+
+	dex
+	bne @shift
+
+	; Copy the low 32 bits of the product into register B.
+
+	lda reg_r
+	sta reg_b
+	lda reg_r+1
+	sta reg_b+1
+	lda reg_r+2
+	sta reg_b+2
+	lda reg_r+3
+	sta reg_b+3
+	rts
 
 ; print
 ;   Print a string of characters, stopping at 0.
@@ -290,11 +449,10 @@ string_invalid_opcode:
 ; Data
 
 intcode_program:
-	.dword 1, 0, 0, 3 ; add 0 0 3
-	.dword 99         ; hlt
+	.dword 1,9,10,3,2,3,11,0,99,30,40,50
 
 ;gravity_assist_program:
-;	.word 1,0,0,3,1,1,2,3,1,3,4,3,1,5,0,3,2,10,1,19,1,6,19,23,2,23,6,27,1,5,27,31,1,31,9,35,2,10,35,39,1,5,39,43,2,43,10,47,1,47,6,51,2,51,6,55,2,55,13,59,2,6,59,63,1,63,5,67,1,6,67,71,2,71,9,75,1,6,75,79,2,13,79,83,1,9,83,87,1,87,13,91,2,91,10,95,1,6,95,99,1,99,13,103,1,13,103,107,2,107,10,111,1,9,111,115,1,115,10,119,1,5,119,123,1,6,123,127,1,10,127,131,1,2,131,135,1,135,10,0,99,2,14,0,0
+;	.dword 1,0,0,3,1,1,2,3,1,3,4,3,1,5,0,3,2,10,1,19,1,6,19,23,2,23,6,27,1,5,27,31,1,31,9,35,2,10,35,39,1,5,39,43,2,43,10,47,1,47,6,51,2,51,6,55,2,55,13,59,2,6,59,63,1,63,5,67,1,6,67,71,2,71,9,75,1,6,75,79,2,13,79,83,1,9,83,87,1,87,13,91,2,91,10,95,1,6,95,99,1,99,13,103,1,13,103,107,2,107,10,111,1,9,111,115,1,115,10,119,1,5,119,123,1,6,123,127,1,10,127,131,1,2,131,135,1,135,10,0,99,2,14,0,0
 
 ;quine_program:
-;	.word 109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99
+;	.dword 109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99
