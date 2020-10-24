@@ -1,11 +1,11 @@
 .PHONY: all
 
-all: test.prg test.d64
+all: day2part1.prg day2part1.d64
 
-test.prg: test.s
-	cl65 -t c64 -C c64-asm.cfg -u __EXEHDR__ -g -o test.prg -m test.map -Ln test.lbl test.s
+day2part1.prg: day2part1.s
+	cl65 -t c64 -C c64-asm.cfg -u __EXEHDR__ -g -o day2part1.prg -m day2part1.map -Ln day2part1.lbl day2part1.s
 
-test.d64: test.prg
-	c1541 -format "intcode,1" d64 test.d64
-	c1541 -attach test.d64 -write test.prg test.prg
-	c1541 -attach test.d64 -list
+day2part1.d64: day2part1.prg
+	c1541 -format "intcode,1" d64 day2part1.d64
+	c1541 -attach day2part1.d64 -write day2part1.prg day2part1.prg
+	c1541 -attach day2part1.d64 -list
